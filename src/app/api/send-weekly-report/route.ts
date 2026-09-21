@@ -16,15 +16,23 @@ export async function POST(req: NextRequest) {
       rational_numbers:'Rational Numbers', proportional:'Proportional Relationships',
       expressions_equations:'Expressions & Equations', geometry:'Geometry',
       statistics_probability:'Statistics & Probability',
+      ratios_basic:'Ratios & Unit Rates', mean_average:'Mean & Averages',
+      time_elapsed:'Time & Elapsed Time', speed_distance:'Speed, Distance & Time',
+      area_figures:'Area, Parallelograms & Surface Area',
+      rates_percentages:'Rates & Percentages', dividing_fractions:'Dividing Fractions',
+      decimal_arithmetic:'Decimal Arithmetic', expressions_6:'Expressions & Equations (Gr 6)',
     }
     const topicIcons: Record<string, string> = {
       rational_numbers:'➕➖', proportional:'📐', expressions_equations:'🔢',
       geometry:'📏', statistics_probability:'🎲',
+      ratios_basic:'⚖️', mean_average:'📊', time_elapsed:'⏰',
+      speed_distance:'🚗', area_figures:'🟦',
+      rates_percentages:'💯', dividing_fractions:'➗', decimal_arithmetic:'🔟', expressions_6:'🟰',
     }
 
     function twinSection(name: string, data: { streak: number; points: number; stats: Record<string, { correct: number; total: number }>; weekDays: number[] }, color: string) {
       const weekQ = (data.weekDays || []).filter(Boolean).length * 5
-      const mcapTopics = ['rational_numbers','proportional','expressions_equations','geometry','statistics_probability']
+      const mcapTopics = ['rational_numbers','proportional','expressions_equations','geometry','statistics_probability','ratios_basic','mean_average','time_elapsed','speed_distance','area_figures','rates_percentages','dividing_fractions','decimal_arithmetic','expressions_6']
       const totalC = mcapTopics.reduce((s,t) => s + (data.stats[t]?.correct||0), 0)
       const totalQ = mcapTopics.reduce((s,t) => s + (data.stats[t]?.total||0), 0)
       const overall = totalQ ? Math.round(totalC/totalQ*100) : 0

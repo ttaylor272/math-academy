@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getUnitForTopic } from '@/lib/schedule'
 
 // ── 7th Grade Advanced Math Standards ──────────────────────────
 // MCAP Advanced 6th (7th grade content) - Target: 240+
@@ -127,6 +128,119 @@ const ADVANCED_MAP = {
   },
 }
 
+// ── Maryland assessment skills (what actually showed up on the state test) ─────
+const MD_ASSESSMENT = {
+  ratios_basic: {
+    label: 'Ratios & Unit Rates',
+    subtopics: [
+      'writing ratios in part-to-part and part-to-whole form',
+      'double number lines and tape diagrams for ratios',
+      'equivalent ratios and ratio tables',
+      'solving proportions with a missing value',
+      'unit rate and unit price (best buy comparisons)',
+      'recipe and scaling problems',
+      'ratio word problems with a total given',
+    ],
+  },
+  mean_average: {
+    label: 'Mean & Averages',
+    subtopics: [
+      'finding the mean of a data set',
+      'mean vs median vs mode vs range',
+      'finding a missing value when the mean is known',
+      'what score is needed to reach a target average',
+      'how an outlier or a new value changes the mean',
+      'comparing two data sets using the mean',
+    ],
+  },
+  time_elapsed: {
+    label: 'Time & Elapsed Time',
+    subtopics: [
+      'elapsed time between two clock times (including crossing noon/midnight)',
+      'working backward from an end time to a start time',
+      'converting hours/minutes/seconds and decimal hours',
+      'adding several durations in a schedule',
+      'multi-step schedule problems (travel, practice, chores)',
+    ],
+  },
+  speed_distance: {
+    label: 'Speed, Distance & Time',
+    subtopics: [
+      'distance = speed x time and its rearrangements',
+      'finding average speed from total distance and total time',
+      'comparing two speeds given in different units',
+      'time needed to cover a distance at a given speed',
+      'multi-leg trips where the speed changes',
+    ],
+  },
+  area_figures: {
+    label: 'Area & Parallelograms',
+    subtopics: [
+      'area of a parallelogram (base x perpendicular height)',
+      'choosing the height instead of the slanted side',
+      'rearranging a parallelogram into a rectangle to explain its area',
+      'matching each base of a parallelogram with its own perpendicular height',
+      'enclosing a polygon in a rectangle and subtracting the corner triangles',
+      'nets of prisms and pyramids',
+      'surface area of rectangular prisms and cubes',
+      'area of triangles and trapezoids',
+      'area and perimeter of rectangles and squares',
+      'finding a missing base or height when the area is given',
+      'area of composite figures made of rectangles and triangles',
+      'perimeter vs area in the same problem',
+    ],
+  },
+}
+
+// ── White Oak Math 6 units not already covered above ─────────────
+const SCHOOL_BANK = {
+  rates_percentages: {
+    label: 'Rates & Percentages',
+    subtopics: [
+      'unit rates and the two unit rates in every ratio',
+      'comparing rates to find the better deal or faster speed',
+      'equivalent ratios share the same unit rate',
+      'finding a percent of a number (the part)',
+      'finding the whole when a part and percent are known',
+      'finding what percent one number is of another',
+      'double number lines and tape diagrams for percentages',
+    ],
+  },
+  dividing_fractions: {
+    label: 'Dividing Fractions',
+    subtopics: [
+      '"how many groups?" fraction division word problems',
+      '"how much in 1 group?" fraction division word problems',
+      'dividing a fraction by a fraction using the reciprocal',
+      'dividing with common denominators',
+      'dividing mixed numbers',
+      'tape diagrams for fraction division',
+      'fraction division in area and length problems (missing side)',
+    ],
+  },
+  decimal_arithmetic: {
+    label: 'Decimal Arithmetic',
+    subtopics: [
+      'adding and subtracting decimals with different place values',
+      'multiplying decimals and placing the decimal point',
+      'dividing whole numbers and decimals by decimals',
+      'estimating to check decimal answers',
+      'multi-step money problems with decimals',
+    ],
+  },
+  expressions_6: {
+    label: 'Expressions & Equations (Grade 6)',
+    subtopics: [
+      'solving one-step equations with balanced operations',
+      'writing an equation from a word problem or tape diagram',
+      'equivalent expressions with the distributive property',
+      'combining like terms with two variables',
+      'evaluating expressions with whole-number exponents',
+      'order of operations with exponents',
+    ],
+  },
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { topic, count = 5, difficulty = 'normal', testType = 'mixed', ritLevel = 228 } = await req.json()
@@ -138,7 +252,42 @@ export async function POST(req: NextRequest) {
     let diffStr = ''
     let testContext = ''
 
-    if (testType === 'map') {
+    // A topic can be drilled directly no matter which test bucket it lives in
+    const ALL_BANKS: Record<string, { label: string; subtopics: string[] }> = {
+      ...ADVANCED_MCAP, ...ADVANCED_MAP, ...MD_ASSESSMENT, ...SCHOOL_BANK,
+    }
+    const drilled = topic ? ALL_BANKS[topic as string] : undefined
+
+    const schoolUnit = topic ? getUnitForTopic(topic as string) : undefined
+
+    if (drilled && schoolUnit) {
+      testContext = `These students are advanced 6th graders. Their class (MCPS Math 6, Amplify Desmos Math) is on Unit ${schoolUnit.unit}: ${schoolUnit.title}. The unit covers: ${schoolUnit.summary} Match the vocabulary and representations their class uses.`
+      topicInstructions = `Focus ONLY on: ${drilled.label}. Subtopics: ${drilled.subtopics.join(', ')}.`
+      diffStr = difficulty === 'hard'
+        ? 'District-assessment level: multi-step, explain-your-reasoning style problems, with realistic distractors.'
+        : 'On grade-6 standard but on the challenging end — these are advanced students. Two-step problems in real contexts.'
+
+    } else if (drilled) {
+      const isMd = topic in MD_ASSESSMENT
+      testContext = isMd
+        ? `These students are advanced 6th graders. This skill appeared on the Maryland state assessment they just took, so accuracy on it matters more than difficulty.`
+        : `These students are advanced 6th graders working at 7th grade math level. MCAP target 240+, MAP target RIT 228+.`
+      topicInstructions = `Focus ONLY on: ${drilled.label}. Subtopics: ${drilled.subtopics.join(', ')}.`
+      diffStr = difficulty === 'hard'
+        ? 'Multi-step problems that require choosing the right operation, with realistic distractors.'
+        : 'Two-step problems in real-world contexts, with realistic distractors.'
+
+    } else if (testType === 'md') {
+      testContext = `These are advanced 6th graders. These questions cover the exact skills that appeared on the Maryland state assessment they just took.`
+      topicInstructions = `Mix the Maryland assessment skills:
+- Ratios & Unit Rates (1q): equivalent ratios, unit price, proportions
+- Mean & Averages (1q): mean, missing value, target average
+- Time & Elapsed Time (1q): elapsed time, converting hours and minutes
+- Speed, Distance & Time (1q): d = s x t in a real context
+- Area & Parallelograms (1q): area of a parallelogram or composite figure (include a figure)`
+      diffStr = 'Two-step problems with realistic numbers. Distractors must be the actual mistakes kids make on these skills.'
+
+    } else if (testType === 'map') {
       testContext = `These students are advanced 6th graders working at 7th grade math level. MAP target RIT: 228+.`
       const topics = ADVANCED_MAP
       if (topic && topics[topic as keyof typeof topics]) {
@@ -178,11 +327,12 @@ export async function POST(req: NextRequest) {
 
     } else {
       testContext = `These are advanced 6th graders working at 7th grade math level, preparing for both MCAP (target: 240+) and MAP (target RIT: 228+).`
-      topicInstructions = `Mix advanced 7th grade math:
-- Rational Numbers with ALL operations including negatives (2q)
-- Proportional relationships, percent change, or simple interest (1q)  
+      topicInstructions = `Mix advanced 7th grade math with the Maryland assessment skills:
+- Rational Numbers with ALL operations including negatives (1q)
+- Proportional relationships, percent change, or simple interest (1q)
 - Two-step equations or linear functions (1q)
-- Circles, angle relationships, or probability (1q)`
+- Area & Parallelograms — include a figure (1q)
+- ONE of: mean/averages, elapsed time, speed-distance-time, or ratios & unit rates (1q)`
       diffStr = 'Two to three-step problems. Use negative numbers, fractions, and decimals throughout. Real-world contexts.'
     }
 
@@ -203,7 +353,22 @@ QUESTION WRITING RULES:
 3. PROBABILITY: State whether events are independent or dependent when relevant
 4. PERCENT CHANGE: Always clearly label what is the original and what is the new value
 5. EQUATIONS: Write the full equation context — never leave out information
-6. Be specific and clear — these kids are sharp but need complete information
+6. MEAN: For "what score is needed" problems, give every existing value explicitly
+7a. FRACTIONS: write fractions as a/b and mixed numbers as "2 1/2" so they are unambiguous
+7. ELAPSED TIME: Always give a.m./p.m. (or use a 24-hour clock) so the interval is unambiguous
+8. SPEED/DISTANCE: State the units for every number, and make units either match or clearly need converting
+9. RATIOS: Say explicitly whether the ratio is part-to-part or part-to-whole
+10. AREA: Always state the units, and answer choices for area must use SQUARE units
+11. Be specific and clear — these kids are sharp but need complete information
+
+FIGURE RULES (diagram questions):
+- A question about the area or perimeter of a parallelogram, triangle, trapezoid or rectangle, or the surface area of a rectangular prism, SHOULD include a "figure" object. Do NOT describe the picture in the question text — the app draws it from the numbers you supply.
+- "figure": { "type": "parallelogram"|"triangle"|"trapezoid"|"rectangle"|"prism", "unit": "cm", "base": 12, "height": 8, "slant": 10, "base2": 7, "width": 5 }
+- parallelogram/triangle: give base and height. Also give "slant" (the slanted side) whenever you want the classic trap — one wrong choice should be base x slant.
+- trapezoid: give base (bottom, b2), base2 (top, b1) and height. rectangle: give base and width.
+- prism (rectangular prism / box, for surface area): give base (length), width and height.
+- Numbers only — no coordinates, no SVG, no extra fields. The figure is labelled automatically and marked "not drawn to scale".
+- Use "figure" ONLY for those five shapes. Leave it out entirely for every other question.
 
 CRITICAL EXPLANATION RULE:
 - "correct" is 0-based index (0=A, 1=B, 2=C, 3=D)
@@ -215,19 +380,20 @@ Generate exactly ${count} questions with 4 choices (A-D), ONE correct answer eac
 
 Return ONLY valid JSON array, no markdown:
 [{
-  "topic": "rational_numbers"|"proportional"|"expressions_equations"|"geometry"|"statistics_probability"|"number_operations"|"ratio_proportion"|"algebra"|"geometry_adv"|"data_probability",
-  "testType": "mcap"|"map",
+  "topic": "rational_numbers"|"proportional"|"expressions_equations"|"geometry"|"statistics_probability"|"number_operations"|"ratio_proportion"|"algebra"|"geometry_adv"|"data_probability"|"ratios_basic"|"mean_average"|"time_elapsed"|"speed_distance"|"area_figures"|"rates_percentages"|"dividing_fractions"|"decimal_arithmetic"|"expressions_6",
+  "testType": "mcap"|"map"|"md"|"school",
   "subtopic": "specific subtopic e.g. 'percent change' or 'two-step equations'",
   "question": "full question text",
   "choices": ["A. ...", "B. ...", "C. ...", "D. ..."],
   "correct": 0,
-  "explanation": "Step 1: ... Step 2: ... Step 3: ... The answer is A. [text]."
+  "explanation": "Step 1: ... Step 2: ... Step 3: ... The answer is A. [text].",
+  "figure": { "type": "parallelogram", "unit": "cm", "base": 12, "height": 8, "slant": 10 }
 }]`
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 2800, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 3400, messages: [{ role: 'user', content: prompt }] }),
     })
 
     if (!response.ok) {
@@ -241,6 +407,25 @@ Return ONLY valid JSON array, no markdown:
 
     const questions = JSON.parse(text.replace(/```json|```/g, '').trim())
 
+    // Keep only figures the renderer can actually draw, with numeric measurements
+    const FIGURE_TYPES = ['parallelogram', 'triangle', 'trapezoid', 'rectangle', 'prism']
+    const NUM_FIELDS = ['base', 'height', 'slant', 'base2', 'width']
+    function cleanFigure(raw: unknown) {
+      if (!raw || typeof raw !== 'object') return undefined
+      const f = raw as Record<string, unknown>
+      if (typeof f.type !== 'string' || !FIGURE_TYPES.includes(f.type)) return undefined
+      const out: Record<string, unknown> = { type: f.type }
+      if (typeof f.unit === 'string') out.unit = f.unit
+      if (typeof f.caption === 'string') out.caption = f.caption
+      for (const k of NUM_FIELDS) {
+        const v = typeof f[k] === 'string' ? parseFloat(f[k] as string) : f[k]
+        if (typeof v === 'number' && isFinite(v) && v > 0) out[k] = v
+      }
+      // A shape with no measurements on it is just decoration — drop it
+      if (!NUM_FIELDS.some(k => k in out)) return undefined
+      return out
+    }
+
     // Fix any wrong answer letters in explanations
     const letters = ['A', 'B', 'C', 'D']
     const fixed = questions.map((q: { correct: number; choices: string[]; explanation: string; [key: string]: unknown }) => {
@@ -251,7 +436,11 @@ Return ONLY valid JSON array, no markdown:
         /The answer is [A-D]\.?[^.]*\./gi,
         `The answer is ${correctLetter}. ${correctText}.`
       )
-      return { ...q, explanation }
+      const figure = cleanFigure(q.figure)
+      // A drilled topic always feeds its own stats bucket, whatever label the model picked
+      const out = { ...q, explanation, figure, ...(drilled ? { topic } : {}) }
+      if (!figure) delete out.figure
+      return out
     })
 
     return NextResponse.json({ questions: fixed })

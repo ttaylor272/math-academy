@@ -1,14 +1,16 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Twin, Question, TwinData, TopicKey, TWIN_COLORS, TOPIC_COLORS, TOPIC_LABELS, TOPIC_ICONS, MCAP_TOPICS, MAP_TOPICS } from '@/lib/types'
+import { Twin, Question, TwinData, TopicKey, TWIN_COLORS, TOPIC_COLORS, TOPIC_LABELS, TOPIC_ICONS, MCAP_TOPICS, MAP_TOPICS, MD_TOPICS, SCHOOL_ONLY_TOPICS } from '@/lib/types'
 import { loadState, saveState, AppState, pct, estimateMCAPScore, estimateRITScore, getMCAPLabel, getRITLabel, getWeakTopics } from '@/lib/state'
 import { CONCEPT_CARDS } from '@/lib/concepts'
+import { FigureSVG } from '@/lib/figures'
+import { SCHOOL_UNITS, getCurrentUnit, upcomingAssessment, shortDate, todayET } from '@/lib/schedule'
 
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 type Page = 'dashboard' | 'practice' | 'mcap_test' | 'map_test' | 'concepts'
 type QuizMode = 'timed' | 'review'
-type TestFocus = 'mcap' | 'map' | 'mixed'
+type TestFocus = 'mcap' | 'map' | 'md' | 'mixed'
 type Confidence = 'sure' | 'unsure' | 'guessed'
 
 interface SessionResult {
@@ -48,7 +50,7 @@ export default function TwinDashboard() {
   const [timerOn, setTimerOn] = useState(false)
   const [testCorrect, setTestCorrect] = useState(0)
   const [toast, setToast] = useState('')
-  const [dashTab, setDashTab] = useState<'mcap'|'map'>('mcap')
+  const [dashTab, setDashTab] = useState<'school'|'mcap'|'map'|'md'>('school')
   const [followUp, setFollowUp] = useState('')
   const [loadingFollowUp, setLoadingFollowUp] = useState(false)
   const [showFollowUp, setShowFollowUp] = useState(false)
@@ -95,6 +97,9 @@ export default function TwinDashboard() {
   const ritC = rit === 0 ? S.muted : rit >= 228 ? S.green : rit >= 218 ? S.orange : S.pink
   const todayIdx = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1
   const Q = questions[qIdx]
+  const today = todayET()
+  const curUnit = getCurrentUnit(today)
+  const upAssess = upcomingAssessment(14, today)
 
   async function genQ(opts: { topic?: string; count?: number; difficulty?: string; testType?: string }) {
     setLoading(true)
@@ -396,7 +401,10 @@ export default function TwinDashboard() {
         </div>
 
         {/* Question */}
-        <div style={{ fontSize:20, fontWeight:700, color:'white', lineHeight:1.5, marginBottom:24 }}>{Q.question}</div>
+        <div style={{ fontSize:20, fontWeight:700, color:'white', lineHeight:1.5, marginBottom:20 }}>{Q.question}</div>
+
+        {/* Diagram (parallelograms, triangles, trapezoids, rectangles) */}
+        {Q.figure && <FigureSVG figure={Q.figure} accent={tc} />}
 
         {/* Choices */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
@@ -642,8 +650,25 @@ export default function TwinDashboard() {
           <div>
             <div style={{ marginBottom:24 }}>
               <h1 style={{ fontSize:32, fontWeight:900, color:'white', margin:'0 0 4px' }}>Welcome back, {data.name}! 👋</h1>
-              <p style={{ color:S.muted, margin:0 }}>{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})} · Advanced 6th Grade Math</p>
+              <p style={{ color:S.muted, margin:0 }}>{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})} · Advanced 6th Grade Math{curUnit ? ` · Class: Unit ${curUnit.unit}, ${curUnit.title}` : ''}</p>
             </div>
+
+            {/* District assessment countdown */}
+            {upAssess && (
+              <div style={{ display:'flex', alignItems:'center', gap:16, padding:'16px 20px', marginBottom:24, borderRadius:16, border:`2px solid ${S.orange}`, background:`${S.orange}12` }}>
+                <div style={{ fontSize:34 }}>📝</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:17, fontWeight:900, color:S.orange }}>
+                    Unit {upAssess.unit.unit} District Assessment {upAssess.days===0?'is TODAY':upAssess.days===1?'is TOMORROW':`in ${upAssess.days} days`} · {shortDate(upAssess.unit.assessment!)}
+                  </div>
+                  <div style={{ fontSize:13, color:S.muted, marginTop:2 }}>{upAssess.unit.title} — {upAssess.unit.summary}</div>
+                </div>
+                <button onClick={() => startPractice(upAssess.unit.topic)}
+                  style={{ padding:'10px 18px', borderRadius:12, fontWeight:800, fontSize:14, color:'white', background:`linear-gradient(135deg,${S.orange},#eab308)`, border:'none', cursor:'pointer', fontFamily:'system-ui', whiteSpace:'nowrap' }}>
+                  Practice Unit {upAssess.unit.unit} →
+                </button>
+              </div>
+            )}
 
             {/* Score cards */}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:24 }}>
@@ -701,15 +726,15 @@ export default function TwinDashboard() {
 
             {/* Domain tabs */}
             <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-              {(['mcap','map'] as const).map(tab => (
+              {(['school','mcap','map','md'] as const).map(tab => (
                 <button key={tab} onClick={() => setDashTab(tab)}
                   style={{ padding:'8px 20px', borderRadius:10, fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'system-ui', background:dashTab===tab?`linear-gradient(135deg,${color},${color}aa)`:'transparent', color:dashTab===tab?'white':S.muted, border:dashTab===tab?'none':`1px solid ${S.border}` }}>
-                  {tab==='mcap'?'🎯 MCAP Domains':'📈 MAP Domains'}
+                  {tab==='school'?'🏫 White Oak Units':tab==='mcap'?'🎯 MCAP Domains':tab==='map'?'📈 MAP Domains':'🏛️ MD Test Skills'}
                 </button>
               ))}
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:24 }}>
-              {(dashTab==='mcap'?MCAP_TOPICS:MAP_TOPICS).map(topic => {
+            {dashTab!=='school' && <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:24 }}>
+              {(dashTab==='mcap'?MCAP_TOPICS:dashTab==='map'?MAP_TOPICS:MD_TOPICS).map(topic => {
                 const s=data.stats[topic], p=pct(s), c=TOPIC_COLORS[topic]
                 return (
                   <div key={topic} onClick={() => startPractice(topic, dashTab)}
@@ -726,12 +751,49 @@ export default function TwinDashboard() {
                   </div>
                 )
               })}
-            </div>
+            </div>}
+
+            {/* White Oak Math 6 units — follows the class calendar */}
+            {dashTab==='school' && (
+              <div style={{ marginBottom:24 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+                  {SCHOOL_UNITS.map(u => {
+                    const st = data.stats[u.topic], p = pct(st), c = TOPIC_COLORS[u.topic]
+                    const isNow = curUnit?.unit === u.unit
+                    const isPast = today > u.end
+                    return (
+                      <div key={u.unit} onClick={() => startPractice(u.topic)}
+                        style={{ background:isNow?`${c}10`:S.surface, border:isNow?`2px solid ${c}`:`1px solid ${S.border}`, borderRadius:14, padding:16, cursor:'pointer', transition:'transform 0.15s' }}
+                        onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.transform='scale(1.02)'}
+                        onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.transform='scale(1)'}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                          <span style={{ fontSize:11, fontWeight:800, color:c, letterSpacing:1 }}>UNIT {u.unit}</span>
+                          {isNow && <span style={{ fontSize:10, fontWeight:900, padding:'2px 8px', borderRadius:20, background:c, color:'#0f1117' }}>IN CLASS NOW</span>}
+                          {isPast && !isNow && <span style={{ fontSize:11, color:S.green, fontWeight:700 }}>✓ Done</span>}
+                        </div>
+                        <div style={{ fontSize:15, fontWeight:800, color:'white', marginBottom:4 }}>{TOPIC_ICONS[u.topic]} {u.title}</div>
+                        <div style={{ fontSize:11, color:S.muted }}>{shortDate(u.start)} – {shortDate(u.end)}</div>
+                        {u.assessment && <div style={{ fontSize:11, color:S.orange, fontWeight:700, marginTop:2 }}>📝 District assessment {shortDate(u.assessment)}</div>}
+                        <div style={{ display:'flex', alignItems:'baseline', gap:8, marginTop:10 }}>
+                          <span style={{ fontSize:22, fontWeight:900, color:c }}>{st.total ? `${p}%` : '—'}</span>
+                          <span style={{ fontSize:11, color:S.muted }}>{st.correct}/{st.total}</span>
+                        </div>
+                        <div style={{ marginTop:6, background:S.surface2, borderRadius:4, height:4 }}>
+                          <div style={{ height:4, borderRadius:4, width:`${p}%`, background:c }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div style={{ fontSize:11, color:S.muted, marginTop:10 }}>From the White Oak Math 6 Units of Study handout · dates subject to change · Units 1–2 share stats with the MD Test Skills tab</div>
+              </div>
+            )}
 
             {/* Quick start */}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16 }}>
               {[
                 { label:'🔀 Mixed Practice', sub:'5q · All advanced topics', onClick:()=>startPractice(undefined,'mixed') },
+                { label:'🏛️ MD Test Skills', sub:'Means · time · speed · ratios · area', onClick:()=>startPractice(undefined,'md') },
                 { label:'📚 Concept Cards', sub:'Review formulas & methods', onClick:()=>setPage('concepts') },
                 { label:'📈 MAP Focus', sub:`Adaptive · RIT ${rit||228} level`, onClick:()=>startPractice(undefined,'map') },
               ].map(b => (
@@ -759,9 +821,9 @@ export default function TwinDashboard() {
               <div style={{ background:S.surface, border:`1px solid ${S.border}`, borderRadius:16, padding:48, textAlign:'center' }}>
                 <div style={{ fontSize:56, marginBottom:16 }}>✏️</div>
                 <div style={{ fontSize:24, fontWeight:900, color:'white', marginBottom:20 }}>What do you want to practice?</div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, maxWidth:480, margin:'0 auto 24px' }}>
-                  {[{t:'mixed',l:'🔀 Mixed',s:'All topics'},{t:'mcap',l:'🎯 MCAP',s:'MD state test'},{t:'map',l:'📈 MAP',s:`RIT ${rit||228}`}].map(o => (
-                    <button key={o.t} onClick={() => startPractice(undefined, o.t as TestFocus)}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, maxWidth:780, margin:'0 auto 24px' }}>
+                  {[{t:'school',l:'🏫 In Class',s:curUnit?`Unit ${curUnit.unit}: ${curUnit.title}`:'Class units'},{t:'mixed',l:'🔀 Mixed',s:'All topics'},{t:'mcap',l:'🎯 MCAP',s:'MD state test'},{t:'map',l:'📈 MAP',s:`RIT ${rit||228}`},{t:'md',l:'🏛️ MD Skills',s:'Means · time · speed · area'}].map(o => (
+                    <button key={o.t} onClick={() => o.t==='school' ? startPractice(curUnit?.topic, 'mixed') : startPractice(undefined, o.t as TestFocus)}
                       style={{ padding:'14px 10px', borderRadius:12, border:`2px solid ${S.border}`, background:S.surface2, cursor:'pointer', fontFamily:'system-ui' }}>
                       <div style={{ fontWeight:700, color:'white', fontSize:14, marginBottom:4 }}>{o.l}</div>
                       <div style={{ fontSize:12, color:S.muted }}>{o.s}</div>
@@ -770,7 +832,7 @@ export default function TwinDashboard() {
                 </div>
                 <div style={{ fontSize:13, color:S.muted, marginBottom:12 }}>Or drill a specific topic:</div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center' }}>
-                  {[...MCAP_TOPICS,...MAP_TOPICS].map(t => (
+                  {[...MCAP_TOPICS,...MAP_TOPICS,...MD_TOPICS,...SCHOOL_ONLY_TOPICS].map(t => (
                     <button key={t} onClick={() => startPractice(t)}
                       style={{ padding:'8px 14px', borderRadius:8, fontSize:12, fontWeight:700, background:`${TOPIC_COLORS[t]}18`, color:TOPIC_COLORS[t], border:`1px solid ${TOPIC_COLORS[t]}40`, cursor:'pointer', fontFamily:'system-ui' }}>
                       {TOPIC_ICONS[t]} {TOPIC_LABELS[t]}
@@ -884,6 +946,8 @@ function MissedCard({ result, idx, color, onShowConcept }: { result: SessionResu
           <div style={{ fontWeight:700, color:'white', fontSize:15 }}>{idx+1}. {q.question}</div>
         </div>
       </div>
+
+      {q.figure && <div style={{ paddingLeft:36 }}><FigureSVG figure={q.figure} accent={tc} /></div>}
 
       <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:14, paddingLeft:36 }}>
         <div style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 14px', borderRadius:10, background:'#ff6b9d12', fontSize:13 }}>

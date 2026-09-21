@@ -1,6 +1,6 @@
-import { Twin, TwinData, TwinStats, TopicKey, MCAP_TOPICS, MAP_TOPICS, defaultTwinData } from './types'
+import { TwinData, TwinStats, TopicKey, MCAP_TOPICS, MAP_TOPICS, MD_TOPICS, SCHOOL_ONLY_TOPICS, defaultTwinData } from './types'
 
-const STORAGE_KEY = 'mathAcademy_v6'
+const STORAGE_KEY = 'mathAcademy_v7'
 
 export interface AppState {
   tim: TwinData
@@ -20,6 +20,15 @@ function emptyStats(): TwinStats {
     algebra: { correct: 0, total: 0 },
     geometry_adv: { correct: 0, total: 0 },
     data_probability: { correct: 0, total: 0 },
+    ratios_basic: { correct: 0, total: 0 },
+    mean_average: { correct: 0, total: 0 },
+    time_elapsed: { correct: 0, total: 0 },
+    speed_distance: { correct: 0, total: 0 },
+    area_figures: { correct: 0, total: 0 },
+    rates_percentages: { correct: 0, total: 0 },
+    dividing_fractions: { correct: 0, total: 0 },
+    decimal_arithmetic: { correct: 0, total: 0 },
+    expressions_6: { correct: 0, total: 0 },
   }
 }
 
@@ -45,8 +54,19 @@ function migrateStats(old: Record<string, { correct: number; total: number }>): 
     algebra: 'algebra',
     geometry_adv: 'geometry_adv',
     data_probability: 'data_probability',
+    // Maryland assessment skills
+    ratios_basic: 'ratios_basic',
+    mean_average: 'mean_average',
+    time_elapsed: 'time_elapsed',
+    speed_distance: 'speed_distance',
+    area_figures: 'area_figures',
+    // White Oak units
+    rates_percentages: 'rates_percentages',
+    dividing_fractions: 'dividing_fractions',
+    decimal_arithmetic: 'decimal_arithmetic',
+    expressions_6: 'expressions_6',
     // old topic names → best new match
-    ratios: 'proportional',
+    ratios: 'ratios_basic',
     number_system: 'rational_numbers',
     expressions: 'expressions_equations',
     statistics: 'statistics_probability',
@@ -76,7 +96,7 @@ export function loadState(): AppState {
       return { ...defaultState(), ...parsed }
     }
     // Try older versions and migrate
-    for (const key of ['mathAcademy_v5','mathAcademy_v4','mathAcademy_v3','mathAcademy_v2','mathAcademy_v1']) {
+    for (const key of ['mathAcademy_v6','mathAcademy_v5','mathAcademy_v4','mathAcademy_v3','mathAcademy_v2','mathAcademy_v1']) {
       const old = localStorage.getItem(key)
       if (old) {
         const parsed = JSON.parse(old)
@@ -107,18 +127,26 @@ export function getRank(points: number) {
   return 'Getting Started!'
 }
 
-export function getWeakTopics(data: TwinData, test: 'mcap' | 'map' | 'all' = 'all'): TopicKey[] {
-  const topics = test === 'mcap' ? MCAP_TOPICS : test === 'map' ? MAP_TOPICS : [...MCAP_TOPICS, ...MAP_TOPICS]
+export function getWeakTopics(data: TwinData, test: 'mcap' | 'map' | 'md' | 'school' | 'all' = 'all'): TopicKey[] {
+  const topics: TopicKey[] =
+    test === 'mcap' ? [...MCAP_TOPICS, ...MD_TOPICS]
+    : test === 'map' ? [...MAP_TOPICS]
+    : test === 'md' ? [...MD_TOPICS]
+    : test === 'school' ? ['area_figures', 'ratios_basic', ...SCHOOL_ONLY_TOPICS]
+    : [...MCAP_TOPICS, ...MAP_TOPICS, ...MD_TOPICS, ...SCHOOL_ONLY_TOPICS]
   return (topics as TopicKey[])
     .filter(t => data.stats[t].total >= 3 && data.stats[t].correct / data.stats[t].total < 0.65)
     .sort((a, b) => (data.stats[a].correct / Math.max(data.stats[a].total, 1)) - (data.stats[b].correct / Math.max(data.stats[b].total, 1)))
 }
 
-// Advanced MCAP: 200-280 scale, proficient = 240 for advanced students
+// Advanced MCAP: 200-280 scale, proficient = 240 for advanced students.
+// The Maryland assessment skills (means, time, speed, ratios, area) count toward
+// the MCAP estimate — they were on the real test.
+const MCAP_SCORE_TOPICS: TopicKey[] = [...MCAP_TOPICS, ...MD_TOPICS]
 export function estimateMCAPScore(data: TwinData) {
-  const total = MCAP_TOPICS.reduce((s, t) => s + data.stats[t].total, 0)
+  const total = MCAP_SCORE_TOPICS.reduce((s, t) => s + data.stats[t].total, 0)
   if (total < 5) return 0
-  const correct = MCAP_TOPICS.reduce((s, t) => s + data.stats[t].correct, 0)
+  const correct = MCAP_SCORE_TOPICS.reduce((s, t) => s + data.stats[t].correct, 0)
   return Math.round(210 + (correct / total) * 80)
 }
 

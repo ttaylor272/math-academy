@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { loadState, saveState, pct, estimateMCAPScore, estimateRITScore, getMCAPLabel, getRITLabel } from '@/lib/state'
 import { AppState } from '@/lib/state'
-import { MCAP_TOPICS, TOPIC_COLORS, TOPIC_LABELS, TOPIC_ICONS, TopicKey } from '@/lib/types'
+import { MCAP_TOPICS, MD_TOPICS, SCHOOL_ONLY_TOPICS, TOPIC_COLORS, TOPIC_LABELS, TOPIC_ICONS, TopicKey } from '@/lib/types'
 
 const S = { bg:'#0f1117', surface:'#1a1d27', surface2:'#22263a', border:'#2e3350', muted:'#8b93b8' }
 
@@ -112,7 +112,7 @@ export default function ParentDashboard() {
                     </div>
                   ))}
                 </div>
-                {MCAP_TOPICS.map(topic => {
+                {[...MCAP_TOPICS, ...MD_TOPICS, ...SCHOOL_ONLY_TOPICS].map(topic => {
                   const s=d.stats[topic], p=pct(s), c=TOPIC_COLORS[topic]
                   return (
                     <div key={topic} style={{ marginBottom:8 }}>
