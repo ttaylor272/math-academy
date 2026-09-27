@@ -18,6 +18,15 @@ interface SessionResult {
   selected: number
   confidence: Confidence
   question: Question
+  typed?: string
+}
+
+const TYPED = -3 // "selected" marker for a wrong answer the student typed in
+
+/** Read a typed answer: ignores $, commas, spaces and any units they include. */
+function parseTyped(raw: string): number | null {
+  const m = /-?\d+(?:\.\d+)?/.exec(raw.replace(/,/g, ''))
+  return m ? parseFloat(m[0]) : null
 }
 
 const S = {
@@ -57,6 +66,9 @@ export default function TwinDashboard() {
   const [showConceptCard, setShowConceptCard] = useState(false)
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null)
   const [waitingConfidence, setWaitingConfidence] = useState(false)
+  const [noChoices, setNoChoices] = useState(false) // hide every multiple choice for the next session
+  const [entryValue, setEntryValue] = useState('')
+  const [typedAnswer, setTypedAnswer] = useState('')
 
   useEffect(() => {
     const parts = window.location.pathname.split('/')
@@ -101,12 +113,12 @@ export default function TwinDashboard() {
   const curUnit = getCurrentUnit(today)
   const upAssess = upcomingAssessment(14, today)
 
-  async function genQ(opts: { topic?: string; count?: number; difficulty?: string; testType?: string }) {
+  async function genQ(opts: { topic?: string; count?: number; difficulty?: string; testType?: string; typeIn?: number }) {
     setLoading(true)
     try {
       const r = await fetch('/api/generate-questions', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ ...opts, ritLevel: rit || 228 }),
+        body: JSON.stringify({ typeIn: noChoices ? 1 : 0.4, ...opts, ritLevel: rit || 228 }),
       })
       const { questions: qs, error } = await r.json()
       if (error) throw new Error(error)
@@ -119,6 +131,7 @@ export default function TwinDashboard() {
     setDone(false); setQIdx(0); setSessCorrect(0); setAnswered(false)
     setSelected(null); setConfidence(null); setResults([])
     setShowFollowUp(false); setFollowUp(''); setWaitingConfidence(false)
+    setEntryValue(''); setTypedAnswer('')
     setPage('practice')
     await genQ({ topic, testType, count: 5 })
   }
@@ -127,6 +140,7 @@ export default function TwinDashboard() {
     setDone(false); setQIdx(0); setTestCorrect(0); setAnswered(false)
     setSelected(null); setConfidence(null); setResults([])
     setShowFollowUp(false); setFollowUp(''); setWaitingConfidence(false)
+    setEntryValue(''); setTypedAnswer('')
     setPage(testType === 'mcap' ? 'mcap_test' : 'map_test')
     await genQ({ testType, count: 10, difficulty: 'hard' })
     if (qMode === 'timed') { setTimer(30); setTimerOn(true) }
@@ -139,6 +153,18 @@ export default function TwinDashboard() {
     setWaitingConfidence(true) // wait for confidence rating before revealing
   }
 
+  function submitEntry() {
+    if (answered || waitingConfidence) return
+    const q = questions[qIdx]
+    if (!q?.entry) return
+    const v = parseTyped(entryValue)
+    if (v === null) { showToast('✏️ Type a number — for example 42 or 7.5'); return }
+    setTypedAnswer(entryValue.trim())
+    setSelected(Math.abs(v - q.entry.value) < 0.005 ? q.correct : TYPED)
+    setTimerOn(false)
+    setWaitingConfidence(true)
+  }
+
   function submitWithConfidence(conf: Confidence, isTest: boolean) {
     if (selected === null) return
     const q = questions[qIdx]
@@ -147,7 +173,7 @@ export default function TwinDashboard() {
     setConfidence(conf)
     setWaitingConfidence(false)
     setShowFollowUp(false); setFollowUp('')
-    setResults(prev => [...prev, { correct, selected, confidence: conf, question: q }])
+    setResults(prev => [...prev, { correct, selected, confidence: conf, question: q, typed: typedAnswer || undefined }])
     if (!isTest && correct) setSessCorrect(c => c + 1)
     if (isTest && correct) setTestCorrect(c => c + 1)
     const topicKey = q.topic as TopicKey
@@ -180,6 +206,7 @@ export default function TwinDashboard() {
 
   function goNext(isTest: boolean) {
     setAnswered(false); setSelected(null); setConfidence(null)
+    setEntryValue(''); setTypedAnswer('')
     setShowFollowUp(false); setFollowUp(''); setWaitingConfidence(false)
     if (qIdx + 1 >= questions.length) {
       setDone(true)
@@ -405,9 +432,41 @@ export default function TwinDashboard() {
 
         {/* Diagram (parallelograms, triangles, trapezoids, rectangles) */}
         {Q.figure && <FigureSVG figure={Q.figure} accent={tc} />}
+        {Q.diagram && (
+          <div style={{ background:S.surface2, borderRadius:12, padding:16, marginBottom:24, display:'flex', justifyContent:'center' }}
+            dangerouslySetInnerHTML={{ __html: Q.diagram }} />
+        )}
+
+        {/* TYPE-IN ANSWER — no choices to guess from */}
+        {Q.entry && (
+          <div style={{ background:S.surface2, border:`1px solid ${answered?(isCorrect?S.green:S.pink)+'50':S.border}`, borderRadius:14, padding:20, marginBottom:16 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:S.muted, marginBottom:12 }}>
+              ✏️ Type your answer{Q.entry.unit ? ` — just the number (${Q.entry.unit})` : ' — just the number'}
+            </div>
+            <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+              <input
+                value={answered || waitingConfidence ? (typedAnswer || entryValue) : entryValue}
+                onChange={e => setEntryValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitEntry() }}
+                disabled={answered || waitingConfidence}
+                inputMode="decimal" autoFocus placeholder="your answer"
+                style={{ flex:'1 1 180px', minWidth:0, padding:'14px 16px', borderRadius:12, border:`2px solid ${answered?(isCorrect?S.green:S.pink):S.border}`, background:S.bg, color:'white', fontSize:20, fontWeight:800, fontFamily:'system-ui', outline:'none' }} />
+              {Q.entry.unit && <span style={{ fontSize:16, fontWeight:700, color:S.muted }}>{Q.entry.unit}</span>}
+              {!answered && !waitingConfidence && (
+                <button onClick={submitEntry}
+                  style={{ padding:'14px 26px', borderRadius:12, fontWeight:900, fontSize:15, color:'white', background:`linear-gradient(135deg,${btnColor},${btnColor}aa)`, border:'none', cursor:'pointer', fontFamily:'system-ui' }}>
+                  Check →
+                </button>
+              )}
+            </div>
+            {!answered && !waitingConfidence && (
+              <div style={{ fontSize:12, color:S.muted, marginTop:10 }}>No answer choices on this one — work it out on paper first.</div>
+            )}
+          </div>
+        )}
 
         {/* Choices */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+        {!Q.entry && <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
           {Q.choices.map((c, i) => {
             let bg = S.surface2, border = S.border, textC = 'white'
             if (waitingConfidence && i === selected) { bg = `${S.blue}20`; border = S.blue } // selected but waiting for confidence
@@ -432,7 +491,7 @@ export default function TwinDashboard() {
               </button>
             )
           })}
-        </div>
+        </div>}
 
         {/* CONFIDENCE RATING — shows after selecting, before revealing answer */}
         {waitingConfidence && !answered && (
@@ -485,12 +544,12 @@ export default function TwinDashboard() {
             {isWrong && !timedOut && selected !== null && (
               <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:14 }}>
                 <div style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 14px', borderRadius:10, background:`${S.pink}12`, fontSize:14 }}>
-                  <span style={{ fontWeight:700, color:S.pink, minWidth:100, flexShrink:0 }}>❌ You chose:</span>
-                  <span style={{ color:S.pink }}>{Q.choices[selected]}</span>
+                  <span style={{ fontWeight:700, color:S.pink, minWidth:100, flexShrink:0 }}>{Q.entry?'❌ You typed:':'❌ You chose:'}</span>
+                  <span style={{ color:S.pink }}>{selected===TYPED?typedAnswer:Q.choices[selected]}</span>
                 </div>
                 <div style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 14px', borderRadius:10, background:`${S.green}12`, fontSize:14 }}>
                   <span style={{ fontWeight:700, color:S.green, minWidth:100, flexShrink:0 }}>✅ Correct:</span>
-                  <span style={{ color:S.green }}>{Q.choices[Q.correct]}</span>
+                  <span style={{ color:S.green }}>{Q.entry?Q.entry.label:Q.choices[Q.correct]}</span>
                 </div>
               </div>
             )}
@@ -663,6 +722,10 @@ export default function TwinDashboard() {
                   </div>
                   <div style={{ fontSize:13, color:S.muted, marginTop:2 }}>{upAssess.unit.title} — {upAssess.unit.summary}</div>
                 </div>
+                <button onClick={() => setNoChoices(v => !v)} title="Hide the answer choices — type every answer instead"
+                  style={{ padding:'10px 14px', borderRadius:12, fontWeight:700, fontSize:12, background:noChoices?`${S.orange}25`:'transparent', color:noChoices?S.orange:S.muted, border:`1px solid ${noChoices?S.orange:S.border}`, cursor:'pointer', fontFamily:'system-ui', whiteSpace:'nowrap' }}>
+                  {noChoices?'🔒 No choices: ON':'🔒 No choices'}
+                </button>
                 <button onClick={() => startPractice(upAssess.unit.topic)}
                   style={{ padding:'10px 18px', borderRadius:12, fontWeight:800, fontSize:14, color:'white', background:`linear-gradient(135deg,${S.orange},#eab308)`, border:'none', cursor:'pointer', fontFamily:'system-ui', whiteSpace:'nowrap' }}>
                   Practice Unit {upAssess.unit.unit} →
@@ -951,12 +1014,12 @@ function MissedCard({ result, idx, color, onShowConcept }: { result: SessionResu
 
       <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:14, paddingLeft:36 }}>
         <div style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 14px', borderRadius:10, background:'#ff6b9d12', fontSize:13 }}>
-          <span style={{ fontWeight:700, color:'#ff6b9d', minWidth:100, flexShrink:0 }}>❌ You chose:</span>
-          <span style={{ color:'#ff6b9d' }}>{result.selected===-1?'⏰ Timed out':q.choices[result.selected]}</span>
+          <span style={{ fontWeight:700, color:'#ff6b9d', minWidth:100, flexShrink:0 }}>{q.entry?'❌ You typed:':'❌ You chose:'}</span>
+          <span style={{ color:'#ff6b9d' }}>{result.selected===-1?'⏰ Timed out':result.selected===-3?(result.typed||'(blank)'):q.choices[result.selected]}</span>
         </div>
         <div style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 14px', borderRadius:10, background:'#43e97b12', fontSize:13 }}>
           <span style={{ fontWeight:700, color:'#43e97b', minWidth:100, flexShrink:0 }}>✅ Correct:</span>
-          <span style={{ color:'#43e97b' }}>{q.choices[q.correct]}</span>
+          <span style={{ color:'#43e97b' }}>{q.entry?q.entry.label:q.choices[q.correct]}</span>
         </div>
       </div>
 

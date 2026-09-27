@@ -35,6 +35,9 @@ export interface Question {
   correct: number
   explanation: string
   figure?: QuestionFigure
+  diagram?: string // ready-made SVG markup (code-built questions draw their own shapes)
+  // When present, the choices are hidden and the student types the answer.
+  entry?: { value: number; unit?: string; label: string }
 }
 
 export interface TopicStats { correct: number; total: number }

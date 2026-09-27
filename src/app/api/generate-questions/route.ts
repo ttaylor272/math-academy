@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { generateUnit1Questions, asEntry, SCHOOL_TOPIC } from '@/lib/unit1'
 import { getUnitForTopic } from '@/lib/schedule'
 
 // ── 7th Grade Advanced Math Standards ──────────────────────────
@@ -243,7 +244,14 @@ const SCHOOL_BANK = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { topic, count = 5, difficulty = 'normal', testType = 'mixed', ritLevel = 228 } = await req.json()
+    const { topic, count = 5, difficulty = 'normal', testType = 'mixed', ritLevel = 228, typeIn = 0.4 } = await req.json()
+    const typeInShare = Math.max(0, Math.min(1, Number(typeIn)))
+
+    // Unit 1 (Area & Surface Area) is built in code, not by the AI: guaranteed-correct
+    // answer keys, diagrams drawn from the same numbers, and no API call needed.
+    if (topic === SCHOOL_TOPIC) {
+      return NextResponse.json({ questions: generateUnit1Questions(Math.min(Number(count) || 5, 10), 'unit1', typeInShare) })
+    }
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
@@ -442,6 +450,19 @@ Return ONLY valid JSON array, no markdown:
       if (!figure) delete out.figure
       return out
     })
+
+    // Turn some of them into type-ins so a session can't be guessed four-ways.
+    // Only answers that are a single plain number qualify; at least one stays multiple choice.
+    type Q = { choices: string[]; correct: number; explanation: string; entry?: ReturnType<typeof asEntry> }
+    const eligible = (fixed as Q[])
+      .map((q, i) => ({ i, entry: asEntry(q.choices[q.correct]?.substring(3) ?? '') }))
+      .filter(e => e.entry)
+    const wanted = Math.min(Math.round(fixed.length * typeInShare), Math.max(fixed.length - 1, 0), eligible.length)
+    for (const { i, entry } of eligible.sort(() => Math.random() - 0.5).slice(0, wanted)) {
+      const q = fixed[i] as Q
+      q.entry = entry
+      q.explanation = q.explanation.replace(/The answer is [A-D]\. /, 'The answer is ')
+    }
 
     return NextResponse.json({ questions: fixed })
   } catch (error) {
